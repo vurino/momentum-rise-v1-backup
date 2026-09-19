@@ -8,9 +8,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme, SPACING, RADIUS, FONT } from '../context/ThemeContext';
+import { getDailyTasks, updateDailyTask } from '../db/dailyTasks';
 
 const { width: SW } = Dimensions.get('window');
-const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || "";
 
 const iconMap: Record<string, string> = {
   'restaurant': 'restaurant-outline', 'sunny': 'sunny-outline', 'briefcase': 'briefcase-outline',
@@ -84,11 +84,7 @@ export default function FocusScreen() {
   const patchTask = useCallback(async (body: Record<string, unknown>) => {
     if (!taskId) return;
     try {
-      await fetch(`${BASE}/api/daily-tasks/${taskId}?client_today=${localToday()}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      await updateDailyTask(taskId, body, localToday());
     } catch (e) {
       console.error(e);
     }
@@ -120,9 +116,7 @@ export default function FocusScreen() {
     if (isActive || outcome !== 'none' || !taskId || !taskDate) return;
     (async () => {
       try {
-        const res = await fetch(`${BASE}/api/daily-tasks/${taskDate}`);
-        const data = await res.json();
-        const list = Array.isArray(data) ? data : data.tasks ?? [];
+        const list = await getDailyTasks(taskDate);
         const current = list.find((t: any) => t.id === taskId);
         if (!current) return;
         if (current.completed) {

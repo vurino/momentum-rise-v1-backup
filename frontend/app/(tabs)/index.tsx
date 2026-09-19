@@ -11,8 +11,8 @@ import { useSimpleTheme, ThemeTokens } from "../../context/SimpleTheme";
 import { scheduleTaskReminders } from "../../utils/notifications";
 import ConfirmModal from "../../components/ConfirmModal";
 import { notify } from "../../utils/confirm";
+import { getDailyTasks, updateDailyTask, getStreak } from "../../db/dailyTasks";
 
-const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || "";
 const LIST_OPEN_KEY = "todayListOpen";
 
 interface Task {
@@ -355,11 +355,7 @@ export default function TodayScreen() {
 
   const patchTask = async (id: string, body: Record<string, unknown>) => {
     try {
-      await fetch(`${BASE}/api/daily-tasks/${id}?client_today=${todayStr()}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      await updateDailyTask(id, body, todayStr());
     } catch (e) {
       console.error(e);
     }
@@ -367,13 +363,10 @@ export default function TodayScreen() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [tasksRes, streakRes] = await Promise.all([
-        fetch(`${BASE}/api/daily-tasks/${todayStr()}`),
-        fetch(`${BASE}/api/streak?today=${todayStr()}`),
+      const [raw, streak] = await Promise.all([
+        getDailyTasks(todayStr()),
+        getStreak(todayStr()),
       ]);
-      const tasksData  = await tasksRes.json();
-      const streakData = await streakRes.json();
-      const raw = Array.isArray(tasksData) ? tasksData : tasksData.tasks ?? [];
       const mapped: Task[] = raw.map((t: any) => ({
         ...t,
         done: t.completed ?? false,
@@ -413,7 +406,7 @@ export default function TodayScreen() {
       }
 
       setTasks(mapped);
-      setStreak(streakData.streak ?? 0);
+      setStreak(streak ?? 0);
 
       const remindersPref = await AsyncStorage.getItem("taskReminders");
       const remindersOn = remindersPref !== null ? JSON.parse(remindersPref) : true;

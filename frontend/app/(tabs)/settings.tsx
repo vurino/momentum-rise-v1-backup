@@ -21,8 +21,9 @@ import {
 } from "../../utils/notifications";
 import { notify } from "../../utils/confirm";
 import ConfirmModal from "../../components/ConfirmModal";
-
-const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || "";
+import { exportAllData, importAllData } from "../../db/backup";
+import { deleteAllScheduleSlots } from "../../db/scheduleSlots";
+import { clearTodayTasks, deleteAllDailyTasks } from "../../db/dailyTasks";
 
 const APPEARANCE_OPTIONS: { key: ThemeMode; label: string }[] = [
   { key: "light",  label: "Light" },
@@ -166,16 +167,11 @@ export default function SettingsScreen() {
     setConfirmReset(false);
     setResetting(true);
     try {
-      const res = await fetch(`${BASE}/api/reset`, { method: "DELETE" });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) {
-        throw new Error(body?.detail || `Server returned ${res.status}`);
-      }
-      const tasksDeleted = body?.deleted_tasks ?? "?";
-      const slotsDeleted = body?.deleted_slots ?? "?";
+      const tasksDeleted = await deleteAllDailyTasks();
+      const slotsDeleted = await deleteAllScheduleSlots();
       notify("Done", `Wiped ${tasksDeleted} tasks and ${slotsDeleted} activities.`);
     } catch (e: any) {
-      notify("Reset failed", e?.message || "Could not reset. Check connection.");
+      notify("Reset failed", e?.message || "Could not reset your data.");
     } finally {
       setResetting(false);
     }
@@ -185,12 +181,10 @@ export default function SettingsScreen() {
     setConfirmClearToday(false);
     setClearingToday(true);
     try {
-      const res = await fetch(`${BASE}/api/reset/today?client_today=${localTodayStr()}`, { method: "DELETE" });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail || `Server returned ${res.status}`);
-      notify("Done", `Cleared ${body?.deleted_tasks ?? "?"} current/upcoming tasks. History is untouched.`);
+      const deleted = await clearTodayTasks(localTodayStr());
+      notify("Done", `Cleared ${deleted} current/upcoming tasks. History is untouched.`);
     } catch (e: any) {
-      notify("Clear failed", e?.message || "Could not clear today's tasks. Check connection.");
+      notify("Clear failed", e?.message || "Could not clear today's tasks.");
     } finally {
       setClearingToday(false);
     }
@@ -200,12 +194,10 @@ export default function SettingsScreen() {
     setConfirmClearRoutine(false);
     setClearingRoutine(true);
     try {
-      const res = await fetch(`${BASE}/api/reset/routine`, { method: "DELETE" });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail || `Server returned ${res.status}`);
-      notify("Done", `Cleared ${body?.deleted_slots ?? "?"} activities from Routine. History is untouched.`);
+      const deleted = await deleteAllScheduleSlots();
+      notify("Done", `Cleared ${deleted} activities from Routine. History is untouched.`);
     } catch (e: any) {
-      notify("Clear failed", e?.message || "Could not clear Routine. Check connection.");
+      notify("Clear failed", e?.message || "Could not clear Routine.");
     } finally {
       setClearingRoutine(false);
     }
@@ -214,8 +206,7 @@ export default function SettingsScreen() {
   const handleExport = async () => {
     setExporting(true);
     try {
-      const res = await fetch(`${BASE}/api/export`);
-      const data = await res.json();
+      const data = await exportAllData();
       const json = JSON.stringify(data, null, 2);
       const fileName = `momentum-export-${todayStr()}.json`;
 
@@ -341,16 +332,10 @@ export default function SettingsScreen() {
     setPendingImport(null);
     setImporting(true);
     try {
-      const res = await fetch(`${BASE}/api/import`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ schedule_slots: slots, daily_tasks: tasks }),
-      });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail || `Server returned ${res.status}`);
+      await importAllData(slots, tasks);
       notify("Done", "Your backup has been restored. Reopen Today, Routine, and History to see it.");
     } catch (e: any) {
-      notify("Import failed", e?.message || "Could not import your data. Check your connection.");
+      notify("Import failed", e?.message || "That backup file couldn't be imported.");
     } finally {
       setImporting(false);
     }

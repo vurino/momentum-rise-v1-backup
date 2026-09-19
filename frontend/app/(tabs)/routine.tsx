@@ -17,19 +17,13 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSimpleTheme, ThemeTokens } from "../../context/SimpleTheme";
 import ConfirmModal from "../../components/ConfirmModal";
 import { notify } from "../../utils/confirm";
-
-const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || "";
-
-interface Slot {
-  id: string;
-  label: string;
-  start_time: string;
-  end_time: string;
-  order_index: number;
-  days: string[];
-  notes?: string | null;
-  specific_date?: string | null;
-}
+import {
+  Slot,
+  getScheduleSlots,
+  createScheduleSlot,
+  updateScheduleSlot,
+  deleteScheduleSlot,
+} from "../../db/scheduleSlots";
 
 const ALL_DAYS: { key: string; label: string; full: string }[] = [
   { key: "mon", label: "M", full: "Mon" },
@@ -646,9 +640,7 @@ export default function RoutineScreen() {
 
   const fetchSlots = useCallback(async () => {
     try {
-      const res = await fetch(`${BASE}/api/schedule-slots`);
-      const data = await res.json();
-      const raw: Slot[] = Array.isArray(data) ? data : data.slots ?? [];
+      const raw = await getScheduleSlots();
       setSlots([...raw].sort((a, b) => a.start_time.localeCompare(b.start_time)));
     } catch (e) {
       console.error(e);
@@ -692,43 +684,38 @@ export default function RoutineScreen() {
 
   const saveSlot = async (data: Partial<Slot>) => {
     try {
-      const body: any = {
-        label: data.label,
-        start_time: data.start_time,
-        end_time: data.end_time,
-        order_index: data.order_index ?? slots.length,
-        days: data.days ?? EVERY_DAY,
-        notes: data.notes ?? null,
-      };
-      if (data.specific_date !== undefined) {
-        body.specific_date = data.specific_date;
-      }
-
-      const res = await fetch(
-        data.id ? `${BASE}/api/schedule-slots/${data.id}` : `${BASE}/api/schedule-slots`,
-        {
-          method: data.id ? "PUT" : "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        }
-      );
-
-      if (!res.ok) {
-        const err = await res.json();
-        notify("Error", JSON.stringify(err));
-        return;
+      if (data.id) {
+        await updateScheduleSlot(data.id, {
+          label: data.label,
+          start_time: data.start_time,
+          end_time: data.end_time,
+          order_index: data.order_index,
+          days: data.days,
+          notes: data.notes ?? null,
+          ...(data.specific_date !== undefined ? { specific_date: data.specific_date ?? "" } : {}),
+        });
+      } else {
+        await createScheduleSlot({
+          label: data.label!,
+          start_time: data.start_time!,
+          end_time: data.end_time!,
+          order_index: data.order_index ?? slots.length,
+          days: data.days ?? EVERY_DAY,
+          notes: data.notes ?? null,
+          specific_date: data.specific_date ?? null,
+        });
       }
 
       closeModal();
       fetchSlots();
     } catch (e) {
-      notify("Network error", String(e));
+      notify("Error", String(e));
     }
   };
 
   const deleteSlot = async (id: string) => {
     try {
-      await fetch(`${BASE}/api/schedule-slots/${id}`, { method: "DELETE" });
+      await deleteScheduleSlot(id);
       closeModal();
       fetchSlots();
     } catch (e) {
@@ -752,13 +739,8 @@ export default function RoutineScreen() {
     }).filter((s): s is { id: string; start_time: string; end_time: string } => s !== null);
     if (snapshot.length > 0) setUndoStack(prev => [...prev, snapshot]);
 
-    Promise.all(Object.entries(changes).map(([id, ch]) =>
-      fetch(`${BASE}/api/schedule-slots/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(ch),
-      })
-    )).catch(e => console.error(e));
+    Promise.all(Object.entries(changes).map(([id, ch]) => updateScheduleSlot(id, ch)))
+      .catch(e => console.error(e));
 
     setSlots(prevSlots => {
       const next = prevSlots.map(s => changes[s.id] ? { ...s, ...changes[s.id] } : s);
@@ -787,13 +769,8 @@ export default function RoutineScreen() {
         const map: Record<string, { start_time: string; end_time: string }> = {};
         step.forEach(s => { map[s.id] = { start_time: s.start_time, end_time: s.end_time }; });
 
-        Promise.all(step.map(s =>
-          fetch(`${BASE}/api/schedule-slots/${s.id}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(map[s.id]),
-          })
-        )).catch(e => console.error(e));
+        Promise.all(step.map(s => updateScheduleSlot(s.id, map[s.id])))
+          .catch(e => console.error(e));
 
         const next = prevSlots.map(s => map[s.id] ? { ...s, ...map[s.id] } : s);
         return [...next].sort((a, b) => a.start_time.localeCompare(b.start_time));

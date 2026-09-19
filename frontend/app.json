@@ -44,7 +44,14 @@
           "icon": "./assets/images/Momentum_Rise_Notification.png",
           "color": "#ff6000"
         }
-      ]
+      ],
+      [
+  "expo-sqlite",
+  {
+    "useSQLCipher": true
+  }
+],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true

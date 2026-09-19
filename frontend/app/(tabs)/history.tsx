@@ -8,8 +8,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { useSimpleTheme, ThemeTokens } from "../../context/SimpleTheme";
 import HistoryTrends from "../../components/HistoryTrends";
-
-const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || "";
+import { getHistory, getMonthlyProgress } from "../../db/history";
+import { getDailyTasks, updateDailyTask } from "../../db/dailyTasks";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -169,9 +169,8 @@ export default function HistoryScreen() {
 
   const fetchData = useCallback(async () => {
     try {
-      const histRes = await fetch(`${BASE}/api/history?days=7&today=${todayStr()}`);
-      const histData = await histRes.json();
-      setRecords(Array.isArray(histData) ? histData : histData.history ?? []);
+      const list = await getHistory(7, todayStr());
+      setRecords(list);
     } catch (e) {
       console.error(e);
     } finally {
@@ -181,9 +180,7 @@ export default function HistoryScreen() {
 
   const fetchMonthProgress = useCallback(async (year: number, month: number) => {
     try {
-      const res = await fetch(`${BASE}/api/monthly-progress/${year}/${month}`);
-      const data = await res.json();
-      const list: DayProgress[] = Array.isArray(data) ? data : [];
+      const list = await getMonthlyProgress(year, month);
       setMonthProgress(list);
     } catch (e) {
       console.error(e);
@@ -193,9 +190,7 @@ export default function HistoryScreen() {
   const loadDayTasks = useCallback(async (dateStr: string) => {
     setLoadingDetail(true);
     try {
-      const res = await fetch(`${BASE}/api/daily-tasks/${dateStr}?client_today=${todayStr()}`);
-      const data = await res.json();
-      const list: DayTask[] = Array.isArray(data) ? data : [];
+      const list = (await getDailyTasks(dateStr, todayStr())) as unknown as DayTask[];
       list.sort((a, b) => (a.start_time ?? "99:99").localeCompare(b.start_time ?? "99:99"));
       setDayTasks(list);
     } catch (e) {
@@ -268,11 +263,7 @@ export default function HistoryScreen() {
     };
     setDayTasks(prev => prev.map(t => t.id === id ? { ...t, ...body } : t));
     try {
-      await fetch(`${BASE}/api/daily-tasks/${id}?client_today=${todayStr()}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      await updateDailyTask(id, body, todayStr());
       fetchMonthProgress(calYear, calMonth);
       fetchData();
     } catch (e) {

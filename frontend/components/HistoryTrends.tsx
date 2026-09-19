@@ -1,10 +1,10 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSimpleTheme, ThemeTokens } from "../context/SimpleTheme";
+import { getAnalyticsTrends } from "../db/history";
 
-const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || "";
 const RANGES: { key: number; label: string }[] = [
   { key: 7, label: "7 Days" },
   { key: 30, label: "30 Days" },
@@ -67,11 +67,22 @@ function DiagnosticBanner({ diagnostic, T }: { diagnostic: Diagnostic; T: ThemeT
 function FollowThroughChart({ buckets, T }: { buckets: Bucket[]; T: ThemeTokens }) {
   const CHART_H = 90;
   const maxScheduled = Math.max(1, ...buckets.map(b => b.metrics.scheduled_minutes));
+  const scrollRef = useRef<ScrollView>(null);
+
+  // Switching the 7/30/90-day range swaps in a differently-sized buckets
+  // array, but the ScrollView keeps whatever horizontal offset it was
+  // already at — on a shorter new range that offset can land past the end
+  // of the new content, leaving the chart showing blank space until the
+  // user manually swipes back. Snapping to the start whenever the bucket
+  // set changes avoids that.
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ x: 0, animated: false });
+  }, [buckets]);
 
   if (!buckets.some(b => b.metrics.scheduled_count > 0)) return null;
 
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={c.chartRow}>
+    <ScrollView ref={scrollRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={c.chartRow}>
       {buckets.map((b, i) => {
         const trackH = b.metrics.scheduled_minutes > 0
           ? Math.max(6, Math.round((b.metrics.scheduled_minutes / maxScheduled) * CHART_H))
@@ -155,11 +166,8 @@ export default function HistoryTrends() {
     setLoading(true);
     try {
       const tzOffset = new Date().getTimezoneOffset();
-      const res = await fetch(
-        `${BASE}/api/analytics/trends?range=${r}&client_now=${encodeURIComponent(localNowISO())}&tz_offset_minutes=${tzOffset}`
-      );
-      const json = await res.json();
-      setData(json);
+      const json = await getAnalyticsTrends(r, localNowISO(), tzOffset);
+      setData(json as unknown as TrendsPayload);
     } catch (e) {
       console.error(e);
       setData(null);
